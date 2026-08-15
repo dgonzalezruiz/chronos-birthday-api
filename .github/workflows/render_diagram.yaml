@@ -1,0 +1,57 @@
+name: Render Architecture Diagram
+
+on:
+  push:
+    paths:
+      - 'architecture/**'
+      - '.github/workflows/render_diagram.yaml'
+    branches: [ main, master ]
+  pull_request:
+    paths:
+      - 'architecture/**'
+      - '.github/workflows/render_diagram.yaml'
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-svg:
+    name: Generate Architecture SVG
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Mermaid CLI
+        run: npm install -g @mermaid-js/mermaid-cli
+
+      - name: Render MMD to SVG
+        run: |
+          mkdir -p architecture/assets
+          echo '{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}' > puppeteer-config.json
+          mmdc -p puppeteer-config.json -i architecture/architecture.mmd -o architecture/assets/architecture.svg -t neutral -b transparent
+          rm -f puppeteer-config.json
+
+      - name: Commit and Push Updated SVG
+        if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'master')
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs(ci): auto-render architecture diagram svg [skip ci]"
+          file_pattern: "architecture/assets/architecture.svg"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          commit_author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
