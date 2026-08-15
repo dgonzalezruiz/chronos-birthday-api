@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chronos-birthday-api.fullname" . }}
+  labels:
+    {{- include "chronos-birthday-api.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "chronos-birthday-api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chronos-birthday-api.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DB_HOST
+              value: {{ if and .Values.postgresql .Values.postgresql.enabled }}{{ printf "%s-postgresql" .Release.Name | quote }}{{ else }}{{ .Values.externalDatabase.host | default "localhost" | quote }}{{ end }}
+            - name: DB_PORT
+              value: {{ if and .Values.postgresql .Values.postgresql.enabled }}"5432"{{ else }}{{ .Values.externalDatabase.port | default 5432 | quote }}{{ end }}
+            - name: DB_NAME
+              value: {{ if and .Values.postgresql .Values.postgresql.enabled }}{{ .Values.postgresql.auth.database | default "birthdays" | quote }}{{ else }}{{ .Values.externalDatabase.database | default "birthdays" | quote }}{{ end }}
+            - name: DB_USER
+              value: {{ if and .Values.postgresql .Values.postgresql.enabled }}{{ .Values.postgresql.auth.username | default "birthday_user" | quote }}{{ else }}{{ .Values.externalDatabase.user | default "birthday_user" | quote }}{{ end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if and .Values.postgresql .Values.postgresql.enabled }}
+                  name: {{ printf "%s-postgresql" .Release.Name }}
+                  key: password
+                  {{- else if and .Values.externalDatabase .Values.externalDatabase.existingSecret }}
+                  name: {{ .Values.externalDatabase.existingSecret.name }}
+                  key: {{ .Values.externalDatabase.existingSecret.key | default "password" }}
+                  {{- else }}
+                  name: {{ include "chronos-birthday-api.fullname" . }}-secret
+                  key: password
+                  {{- end }}
+            - name: DATABASE_URL
+              value: "postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)"
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

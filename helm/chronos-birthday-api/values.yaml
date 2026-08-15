@@ -1,0 +1,42 @@
+replicaCount: 2
+
+image:
+  repository: chronos-birthday-api
+  pullPolicy: IfNotPresent
+  tag: "local"
+
+# 1. Local / Kind Dev Mode (Default)
+postgresql:
+  enabled: true
+  auth:
+    username: "birthday_user"
+    password: "birthday_dev_password"
+    database: "birthdays"
+
+# 2. Production / AWS EKS Mode (Overridden in staging/prod values)
+externalDatabase:
+  enabled: false
+  host: "rds-postgres.internal.amazonaws.com"
+  port: 5432
+  user: "birthday_prod_user"
+  database: "birthdays"
+  existingSecret:
+    name: "birthday-db-credentials" # Synced from AWS Secrets Manager via ESO
+    key: "password"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+resources:
+  limits:
+    cpu: 250m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
