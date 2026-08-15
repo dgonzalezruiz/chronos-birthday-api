@@ -1,0 +1,87 @@
+name: CI Pipeline for Chronos Birthday API
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'architecture/**'
+      - '**.md'
+      - '.gitignore'
+      - '.github/workflows/render_diagram.yaml'
+  pull_request:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'architecture/**'
+      - '**.md'
+      - '.gitignore'
+      - '.github/workflows/render_diagram.yaml'
+
+jobs:
+  test:
+    name: Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            app/requirements.txt
+            tests/requirements.txt
+
+      - name: Run Unit Tests
+        run: make unit-tests
+
+  build-and-e2e:
+    name: Build & Kubernetes E2E
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Cache Container
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          load: true
+          tags: chronos-birthday-api:local
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Set up kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: chronos-local
+          wait: 120s
+
+      - name: Deploy Metrics Server
+        run: make metrics-deploy
+
+      - name: Sideload Images & Deploy to kind
+        run: |
+          docker pull postgres:16-alpine || true
+          kind load docker-image postgres:16-alpine --name chronos-local
+          kind load docker-image chronos-birthday-api:local --name chronos-local
+          
+          helm upgrade --install chronos-birthday-api helm/chronos-birthday-api \
+            --namespace default \
+            --set image.repository=chronos-birthday-api \
+            --set image.tag=local \
+            --set image.pullPolicy=Never \
+            --wait --timeout 120s
+
+      - name: Run E2E Tests
+        run: make test-e2e
