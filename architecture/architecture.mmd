@@ -1,0 +1,57 @@
+flowchart TD
+    %% ─────────────────────────────────────────────
+    %% 1. TRAFFIC INGRESS & EDGE (Top)
+    %% ─────────────────────────────────────────────
+    subgraph Edge [" 🌐 Edge & Network Ingress "]
+        Client["👤 Clients / API Consumers"] -->|HTTPS :443| R53["🌐 Route 53 (Anycast DNS)"]
+        R53 --> WAF["🛡️ AWS WAF (Rate Limiting & OWASP)"]
+        WAF --> ALB["⚖️ Multi-AZ ALB (ACM TLS)"]
+    end
+
+    %% ─────────────────────────────────────────────
+    %% 2. WORKLOAD & PERSISTENCE RUNTIME (Middle)
+    %% ─────────────────────────────────────────────
+    subgraph VPC [" ☁️ AWS VPC (Multi-AZ) "]
+        direction TB
+
+        %% Compute Tier
+        subgraph Compute [" ⚡ Application Runtime Tier (Amazon EKS) "]
+            IngressCtrl["🔀 AWS Load Balancer Controller (IP Mode)"]
+            Pods["📦 Birthday API Pods"]
+            Karpenter["⚡ Karpenter Autoscaler (Right-sized EC2 Nodes)"]
+            IngressCtrl --> Pods
+            Pods -.-> Karpenter
+        end
+
+        %% Storage Tier
+        subgraph Storage [" 🗄️ Storage Runtime Tier (HA Database) "]
+            DB["💾 Storage Black Box"]
+        end
+
+        %% Security & Workload Identity
+        subgraph Security [" 🔐 Security & Identity Control "]
+            ESO["🔑 External Secrets Operator (ESO)"]
+            SecMgr["🔒 AWS Secrets Manager (KMS CMK)"]
+            IRSA["🛡️ EKS Pod Identity / IRSA (OIDC)"]
+            ESO -.->|Sync Secret Store| SecMgr
+        end
+    end
+
+    %% Ingress to Compute & Storage
+    ALB --> IngressCtrl
+    Pods -->|SQL Connection Pool :5432| DB
+    Pods -.->|IAM Authentication| IRSA
+    Pods -.->|Mount Credentials| ESO
+
+    %% ─────────────────────────────────────────────
+    %% 3. OUT-OF-BAND OPERATIONS & TELEMETRY (Bottom)
+    %% ─────────────────────────────────────────────
+    subgraph Operations [" 🛠️ Telemetry Planes (Out-of-Band) "]
+        direction LR
+        Obs["📊 CloudWatch Logs / Prometheus & OpenTelemetry"]
+        GitOps["🐙 ArgoCD (GitOps Manifest Reconciler)"]
+    end
+
+    %% Downward Flows into Operations
+    Pods -->|Export Metrics, Traces & Logs| Obs
+    GitOps -.->|Sync Manifests| VPC
