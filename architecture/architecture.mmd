@@ -43,7 +43,7 @@ flowchart TD
         end
     end
 
-    ALB -->|Direct IP Mode :8000 (VPC CNI)| Pods
+    ALB -->|"Direct IP Mode :8000 (VPC CNI)"| Pods
     Pods -->|App Connection Pool| Proxy
     IRSA -->|Project STS Token| Pods
 
