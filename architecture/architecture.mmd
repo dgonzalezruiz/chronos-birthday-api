@@ -1,57 +1,58 @@
 flowchart TD
-    %% ─────────────────────────────────────────────
-    %% 1. TRAFFIC INGRESS & EDGE (Top)
-    %% ─────────────────────────────────────────────
-    subgraph Edge [" 🌐 Edge & Network Ingress "]
-        Client["👤 Clients / API Consumers"] -->|HTTPS :443| R53["🌐 Route 53 (Anycast DNS)"]
-        R53 --> WAF["🛡️ AWS WAF (Rate Limiting & OWASP)"]
-        WAF --> ALB["⚖️ Multi-AZ ALB (ACM TLS)"]
+    subgraph Edge [" 1. Edge & Ingress Tier "]
+        Client["Clients / External Consumers"]
+        R53["Amazon Route 53"]
+        WAF["AWS WAF"]
+        ACM["AWS Certificate Manager (ACM)"]
+        ALB["Multi-AZ Application Load Balancer"]
+
+        Client -->|HTTPS :443| R53
+        R53 --> WAF
+        WAF --> ALB
+        ACM -.->|TLS Certificate| ALB
     end
 
-    %% ─────────────────────────────────────────────
-    %% 2. WORKLOAD & PERSISTENCE RUNTIME (Middle)
-    %% ─────────────────────────────────────────────
-    subgraph VPC [" ☁️ AWS VPC (Multi-AZ) "]
+    subgraph VPC [" 2. AWS VPC (Multi-AZ Private Subnets) "]
         direction TB
 
-        %% Compute Tier
-        subgraph Compute [" ⚡ Application Runtime Tier (Amazon EKS) "]
-            IngressCtrl["🔀 AWS Load Balancer Controller (IP Mode)"]
-            Pods["📦 Birthday API Pods"]
-            Karpenter["⚡ Karpenter Autoscaler (Right-sized EC2 Nodes)"]
-            IngressCtrl --> Pods
+        subgraph EKS [" Application Tier (Amazon EKS) "]
+            direction TB
+            Pods["Birthday API Pods"]
+            Karpenter["Karpenter Autoscaler"]
+            Reloader["Stakater Reloader"]
+
             Pods -.-> Karpenter
+            Reloader -.->|Rollout on Secret Change| Pods
         end
 
-        %% Storage Tier
-        subgraph Storage [" 🗄️ Storage Runtime Tier (HA Database) "]
-            DB["💾 Storage Black Box"]
+        subgraph Persistence [" Persistence Tier "]
+            Proxy["RDS Proxy / Connection Pooler"]
+            DB[("Amazon Aurora PostgreSQL Multi-AZ")]
+            Proxy -->|Multiplexed Connections :5432| DB
         end
 
-        %% Security & Workload Identity
-        subgraph Security [" 🔐 Security & Identity Control "]
-            ESO["🔑 External Secrets Operator (ESO)"]
-            SecMgr["🔒 AWS Secrets Manager (KMS CMK)"]
-            IRSA["🛡️ EKS Pod Identity / IRSA (OIDC)"]
-            ESO -.->|Sync Secret Store| SecMgr
+        subgraph SecurityControls [" Workload Identity & Secrets "]
+            SecMgr["AWS Secrets Manager"]
+            ESO["External Secrets Operator"]
+            K8sSecret["Kubernetes Secret"]
+            IRSA["EKS Pod Identity / IRSA"]
+
+            SecMgr -->|Sync Credentials| ESO
+            ESO -->|Create / Update| K8sSecret
+            K8sSecret -.->|Watch Secret Change| Reloader
         end
     end
 
-    %% Ingress to Compute & Storage
-    ALB --> IngressCtrl
-    Pods -->|SQL Connection Pool :5432| DB
-    Pods -.->|IAM Authentication| IRSA
-    Pods -.->|Mount Credentials| ESO
+    ALB -->|"Direct IP Mode :8000 (VPC CNI)"| Pods
+    Pods -->|App Connection Pool| Proxy
+    IRSA -->|Project STS Token| Pods
 
-    %% ─────────────────────────────────────────────
-    %% 3. OUT-OF-BAND OPERATIONS & TELEMETRY (Bottom)
-    %% ─────────────────────────────────────────────
-    subgraph Operations [" 🛠️ Telemetry Planes (Out-of-Band) "]
+    subgraph Operations [" 3. Operational & Telemetry Planes "]
         direction LR
-        Obs["📊 CloudWatch Logs / Prometheus & OpenTelemetry"]
-        GitOps["🐙 ArgoCD (GitOps Manifest Reconciler)"]
+        Obs["OpenTelemetry / Prometheus & CloudWatch"]
+        GitOps["ArgoCD"]
     end
 
-    %% Downward Flows into Operations
-    Pods -->|Export Metrics, Traces & Logs| Obs
-    GitOps -.->|Sync Manifests| VPC
+    Pods -.->|Metrics & Traces| Obs
+    DB -.->|Engine Metrics| Obs
+    GitOps -.->|Reconcile Manifests| Pods
