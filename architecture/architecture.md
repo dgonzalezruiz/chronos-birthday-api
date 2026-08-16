@@ -24,7 +24,7 @@ This document outlines the target AWS production design to operate this service 
 
 ### 3.2 Compute & Scaling (Amazon EKS)
 * **Cluster Baseline:** Managed EKS with private API endpoint access and KMS CMK envelope encryption for Kubern* **Autoscaling:** An HPA scales pods across AZs, based on CPU usage versus some threshold. Custom HTTP request metrics can be fed into HPA via `prometheus-adapter` during sudden traffic bursts. Karpenter observes pending pods and spins up right-sized EC2 compute (mixing ARM64 and AMD64 on-demand AND spot instances) across all three AZs.
-* **Autoscaling:** An HPA scales pods between 3 (one per AZ) and 30 replicas based on a 70% CPU threshold. Custom HTTP request metrics can be fed into HPA via `prometheus-adapter` during sudden traffic bursts. Karpenter observes pending pods and spins up right-sized EC2 compute (mixing Graviton and AMD64 instances) across all three AZs.
+* **Autoscaling:** An HPA scales pods between AZs based on a CPU threshold. Custom HTTP request metrics can be fed into HPA via `prometheus-adapter` during sudden traffic bursts. Karpenter observes pending pods and spins up right-sized EC2 compute (mixing ARM64 and AMD64 instances) across all three AZs.
 
 ### 3.3 Database Tier & State Persistence
 * **Amazon Aurora PostgreSQL (Multi-AZ):**
