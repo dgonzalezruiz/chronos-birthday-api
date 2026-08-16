@@ -3,12 +3,12 @@ name: Render Architecture Diagram
 on:
   push:
     paths:
-      - 'architecture/**'
+      - 'architecture/*.mmd'
       - '.github/workflows/render_diagram.yaml'
     branches: [ main, master ]
   pull_request:
     paths:
-      - 'architecture/**'
+      - 'architecture/*.mmd'
       - '.github/workflows/render_diagram.yaml'
     branches: [ main, master ]
   workflow_dispatch:
