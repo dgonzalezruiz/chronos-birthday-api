@@ -18,10 +18,8 @@ flowchart TD
         subgraph EKS [" Application Tier (Amazon EKS) "]
             direction TB
             Pods["Birthday API Pods"]
-            Karpenter["Karpenter Autoscaler"]
             Reloader["Stakater Reloader"]
 
-            Pods -.-> Karpenter
             Reloader -.->|Rollout on Secret Change| Pods
         end
 
@@ -43,7 +41,7 @@ flowchart TD
         end
     end
 
-    ALB -->|"Direct IP Mode :8000 (VPC CNI)"| Pods
+    ALB -->|"Direct Pod Ingress :8000 (VPC CNI IP Target)"| Pods
     Pods -->|App Connection Pool| Proxy
     IRSA -->|Project STS Token| Pods
 
