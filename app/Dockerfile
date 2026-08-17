@@ -14,8 +14,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PATH="/home/appuser/.local/bin:$PATH"
 
-# Remove vulnerable system-level setuptools/wheel from the base image
-RUN pip uninstall -y setuptools wheel 2>/dev/null || true
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
+    pip uninstall -y setuptools wheel pip 2>/dev/null || true
 
 RUN groupadd -g 10001 appgroup && \
     useradd -u 10001 -g appgroup -s /sbin/nologin -d /home/appuser appuser && \
